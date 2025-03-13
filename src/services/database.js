@@ -1,5 +1,7 @@
 /*
 The node.js database service handles user authentication (register/login/logout)
+Loads environment variables from .env, ensuring secure database credential access.
+Dynamically resolves the .env file path using path and fileURLToPath.
 session validation
 storing translations
 fetching translation history
@@ -66,7 +68,7 @@ if (USE_MOCK_DB) {
     const sessionId = rawSessionId; // Raw GUID for database
     const signedSessionId = crypto.createHmac('sha256', process.env.SESSION_SECRET || 'default-secret')
                                  .update(rawSessionId)
-                                 .digest('hex'); // Signed session ID
+                                 .digest('hex'); // Signed session ID, (HMAC-SHA256 with SESSION_SECRET)
     return { 
       success: true, 
       user: { 
@@ -144,6 +146,11 @@ if (USE_MOCK_DB) {
 } else {
   // ==================== PRODUCTION IMPLEMENTATION ====================
 
+  /*
+  Database Configuration & Connection Handling:
+  Uses sql.connect(dbConfig) to maintain a single persistent connection.
+  Session security settings (SESSION_SECRET, SESSION_EXPIRATION) are also loaded
+  */ 
   const dbConfig = {
     server: process.env.DB_SERVER,
     database: process.env.DB_NAME,
@@ -183,6 +190,12 @@ if (USE_MOCK_DB) {
     return pool;
   };
 
+  /*
+   User Authentication, Registering Users (registerUser):
+   uses bcrypt to securely hash passwords before storing.
+   calls the stored procedure spRegisterUser to insert a new user into the database.
+   returns success/failure based on database execution.
+  */
   registerUser = async (email, password) => {
     try {
       const salt = await bcrypt.genSalt(10);
@@ -203,6 +216,17 @@ if (USE_MOCK_DB) {
     }
   };
 
+  /*
+  Logging in Users (loginUser):
+  retrieves hashed password from spLoginUser.
+  uses bcrypt.compare() to verify the entered password.
+  generates a UUID session ID (crypto.randomUUID()).
+  signs session ID using HMAC (crypto.createHmac) for security.
+  Stores session in spCreateSession along with:
+  session_id
+  signed_session_id
+  expires_at (calculated based on SESSION_EXPIRATION).
+  */
   loginUser = async (email, password) => {
     try {
       const poolInstance = await getPool();
@@ -250,7 +274,11 @@ if (USE_MOCK_DB) {
       return { success: false, error: error.message };
     }
   };
-
+  /*
+  Logging Out Users (logoutUser):
+  deletes session from the Sessions table using signed_session_id.
+  prevents unauthorized access by invalidating stored session tokens.
+  */
   logoutUser = async (signedSessionId) => {
     try {
       const poolInstance = await getPool();
@@ -266,6 +294,12 @@ if (USE_MOCK_DB) {
     }
   };
 
+  /*
+  Storing and Fetching Translations:
+  save Text Translation (saveTextTranslation)
+  stores original and translated text in the database.
+  calls spSaveTextTranslation.
+  */
   saveTextTranslation = async (userId, fromLang, toLang, originalText, translatedText) => {
     try {
       const poolInstance = await getPool();
@@ -286,6 +320,11 @@ if (USE_MOCK_DB) {
     }
   };
 
+  /*
+  Fetching Translation History
+  get Text Translation History (getTextTranslationHistory)
+  retrieves text translations stored in the database.
+  */
   getTextTranslationHistory = async (userId) => {
     try {
       const poolInstance = await getPool();
@@ -300,7 +339,12 @@ if (USE_MOCK_DB) {
       return { success: false, error: error.message };
     }
   };
-
+  /*
+  Storing and Fetching Translations:
+  save Voice Translation (saveVoiceTranslation)
+  stores translated text in the database.
+  calls spSaveVoiceTranslation.
+  */
   saveVoiceTranslation = async (userId, fromLang, toLang, originalText, translatedText) => {
     try {
       const poolInstance = await getPool();
@@ -321,6 +365,13 @@ if (USE_MOCK_DB) {
     }
   };
 
+  /*
+  Fetching Voice Translation History (getVoiceTranslationHistory)
+  retrieves all stored voice translations for a user.
+  calls stored procedure spGetUserVoiceTranslations.
+  ensures database connection before executing the query. 
+  returns list of previous voice translations.
+  */
   getVoiceTranslationHistory = async (userId) => {
     try {
       const poolInstance = await getPool();
@@ -336,6 +387,15 @@ if (USE_MOCK_DB) {
     }
   };
 
+  /*
+  Session Validation (validateSession)
+  verifies session authenticity using signedSessionId.
+  calls stored procedure spValidateSession.
+  prevents unauthorized access by checking:
+  session expiration.
+  signed session ID (HMAC signature verification).
+  logs session validation attempts.
+  */
   validateSession = async (sessionId, signedSessionId) => {
     try {
       const poolInstance = await getPool();
@@ -357,6 +417,15 @@ if (USE_MOCK_DB) {
     }
   };
 
+  /*
+  Updating User Preferences (updateUserPreferences)
+  updates user language preferences (default_from_lang, default_to_lang).
+  calls stored procedure spUpdateUserPreferences.
+  if no rows are affected, it means:
+  the user does not exist, OR
+  no actual changes were made to the preferences.
+  logs all update attempts.
+  */
   updateUserPreferences = async (userId, defaultFromLang, defaultToLang) => {
     try {
       const poolInstance = await getPool();
@@ -386,6 +455,13 @@ if (USE_MOCK_DB) {
     }
   };
 
+  /*
+  Retrieving User Preferences (getUserPreferences)
+  fetches stored language preferences (default_from_lang, default_to_lang).
+  retrieves directly from the Users table.
+  ensures user exists before returning preferences.
+  logs query execution and results.
+  */
   getUserPreferences = async (userId) => {
     try {
       const poolInstance = await getPool();

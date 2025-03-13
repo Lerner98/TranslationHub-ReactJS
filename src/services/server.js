@@ -1,3 +1,24 @@
+/*
+Server.js Overview:
+This Node.js Express server acts as the backend for the Translation Hub application.
+It provides REST API endpoints for:
+
+🟢 User Authentication (Register, Login, Logout).
+🔒 Session Validation (validateSession middleware for security).
+📜 Text & Voice Translation Management (Saving & Fetching History).
+⚙️ User Preferences Management (Languages, Settings).
+🗂 File Uploads Handling (Not actively used but included for compatibility).
+🌍 CORS Support (Allows cross-origin requests).
+*/
+
+
+/*
+Express App Initialization:
+Express is used for creating the API.
+CORS is enabled to allow frontend requests.
+JSON body parsing (express.json()) ensures structured request handling.
+*/
+
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -24,6 +45,15 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+/*
+Input Validation Functions
+validateEmail ensures the email format is correct.
+validatePassword enforces strong password rules:
+minimum 8 characters.
+at least 1 uppercase letter.
+at least 1 special character.
+*/
+
 // Validation functions for email and password
 const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -35,7 +65,13 @@ const validatePassword = (password) => {
     return passwordRegex.test(password);
 };
 
-// Set up multer for file uploads (not used for STT but kept for compatibility)
+/*
+File Uploads (Multer)
+Multer is configured for handling file uploads.
+Uploads are stored in the /uploads directory.
+Static serving is enabled for uploaded files.
+Not currently used but retained for future compatibility.
+*/
 const storage = multer.diskStorage({
     destination: './uploads/',
     filename: (req, file, cb) => {
@@ -44,10 +80,14 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Serve uploaded files statically (not used but kept for compatibility)
 app.use('/uploads', express.static('uploads'));
 
-// Authentication middleware
+/*
+Authentication Middleware (authenticate)
+Extracts signedSessionId from Authorization header.
+Validates session using validateSession from database.js.
+If invalid, returns 401 Unauthorized.
+*/
 const authenticate = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -64,7 +104,14 @@ const authenticate = async (req, res, next) => {
     next();
 }; // Checks for a valid Bearer token and session. Essential for securing all protected routes after ensuring `validateSession` in `database.js` is correctly implemented.
 
-// ✅ Register User API
+
+/*
+User Authentication Endpoints
+Register User (/api/register)
+Validates input (email & password).
+Calls registerUser from database.js to store new user.
+Returns success or error message.
+*/
 app.post('/api/register', async (req, res) => {
     const { email, password } = req.body;
 
@@ -89,7 +136,11 @@ app.post('/api/register', async (req, res) => {
     }
 }); // Validates email and password with regex before calling `registerUser`. Critical for security—update regex if password rules change.
 
-// ✅ Login User API
+/*
+Login User (/api/login)
+Checks credentials via loginUser.
+Returns session_id for future authentication.
+*/
 app.post('/api/login', async (req, res) => {
     const { email, password } = req.body;
     try {
@@ -100,7 +151,11 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// ✅ Logout User API
+/*
+Logout User (/api/logout)
+Requires authentication (uses authenticate middleware).
+Deletes the session from the database.
+*/
 app.post('/api/logout', authenticate, async (req, res) => {
     const { signedSessionId } = req;
     try {
