@@ -1,65 +1,79 @@
+/*
+This screen component serves as the user profile screen (both logged in and guests)
+it allows the users to view profile details, set & save default language preferences for future translations
+view translation history
+register, sign-in through AuthScreen and sign out in profile
+*/
+
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import AuthScreen from './AuthScreen';
+import { useNavigate } from 'react-router-dom'; // handles redirection after logout
+import { useAuth } from '../context/AuthContext'; // for user, signOut, sessionId, setUser
+import AuthScreen from './AuthScreen'; // accessing our register/sign-in screen, only available in profile page
 import LanguageSearch from '../components/LanguageSearch';
 
+// State Management
 const ProfileScreen = () => {
-  const { user, sessionId, signOut, setUser } = useAuth();
+  const { user, signedSessionId, signOut, setUser } = useAuth(); 
   const navigate = useNavigate();
-  const [showAuth, setShowAuth] = useState(false);
-  const [defaultFromLang, setDefaultFromLang] = useState(
+  const [showAuth, setShowAuth] = useState(false); // a toggle to control if authScreen is displayed or not
+  const [defaultFromLang, setDefaultFromLang] = useState( // stores pref languages
     user?.defaultFromLang !== undefined ? user.defaultFromLang : ''
   );
   const [defaultToLang, setDefaultToLang] = useState(
     user?.defaultToLang !== undefined ? user.defaultToLang : ''
   );
-  const [activeTab, setActiveTab] = useState('text');
-  const [translations, setTranslations] = useState(null);
-  const [loading, setLoading] = useState(!!user);
-  const [error, setError] = useState(null);
-  const [renderKey, setRenderKey] = useState(0);
+  const [activeTab, setActiveTab] = useState('text'); // switches between text & voice translation history
+  const [translations, setTranslations] = useState(null); // users translation history
+  const [loading, setLoading] = useState(!!user); // tracks the api requests for fetching data
+  const [error, setError] = useState(null); 
+  const [renderKey, setRenderKey] = useState(0); // forces re-render after auth success
 
-// Fetch preferences on mount for logged-in users (runs once)
-useEffect(() => {
-  if (user) {
-    const fetchPreferences = async () => {
-      try {
-        console.log('Fetching preferences for user:', user.id);
-        const response = await fetch(`http://localhost:5000/api/user/preferences/${user.id}`, {
-          headers: { 'Authorization': `Bearer ${sessionId}` },
-        });
-        const preferencesResult = await response.json();
-        if (response.ok && preferencesResult.success) {
-          const newDefaultFromLang = preferencesResult.preferences.default_from_lang || '';
-          const newDefaultToLang = preferencesResult.preferences.default_to_lang || '';
-          // Clear preferences in sessionStorage and user state if they are empty from the server
-          if (!newDefaultFromLang && !newDefaultToLang) {
-            const clearedUser = { ...user, defaultFromLang: '', defaultToLang: '' };
-            sessionStorage.setItem('authUser', JSON.stringify(clearedUser));
-            setUser(clearedUser);
-            setDefaultFromLang('');
-            setDefaultToLang('');
-          } else {
-            setDefaultFromLang(newDefaultFromLang);
-            setDefaultToLang(newDefaultToLang);
-            const updatedUser = { 
-              ...user, 
-              defaultFromLang: newDefaultFromLang, 
-              defaultToLang: newDefaultToLang 
-            };
-            sessionStorage.setItem('authUser', JSON.stringify(updatedUser));
-            setUser(updatedUser); // Update AuthContext
-            console.log('Preferences updated:', { defaultFromLang: newDefaultFromLang, defaultToLang: newDefaultToLang });
+  /*
+  Fetching & Updating Preferences (Logged-In Users):
+  runs once on mount
+  fetches the user preferences from the api
+  updates the AuthContext state and sessionStorage
+  if server returns empty preferences it resets them to '' for new users
+  */
+  useEffect(() => {
+    if (user) {
+      const fetchPreferences = async () => {
+        try {
+          console.log('Fetching preferences for user:', user.id);
+          const response = await fetch(`http://localhost:5000/api/user/preferences/${user.id}`, {
+            headers: { 'Authorization': `Bearer ${user.signed_session_id}` },
+          });
+          const preferencesResult = await response.json();
+          if (response.ok && preferencesResult.success) {
+            const newDefaultFromLang = preferencesResult.preferences.default_from_lang || '';
+            const newDefaultToLang = preferencesResult.preferences.default_to_lang || '';
+            // Clear preferences in sessionStorage and user state if they are empty from the server
+            if (!newDefaultFromLang && !newDefaultToLang) {
+              const clearedUser = { ...user, defaultFromLang: '', defaultToLang: '' };
+              sessionStorage.setItem('authUser', JSON.stringify(clearedUser));
+              setUser(clearedUser);
+              setDefaultFromLang('');
+              setDefaultToLang('');
+            } else {
+              setDefaultFromLang(newDefaultFromLang);
+              setDefaultToLang(newDefaultToLang);
+              const updatedUser = { 
+                ...user, 
+                defaultFromLang: newDefaultFromLang, 
+                defaultToLang: newDefaultToLang 
+              };
+              sessionStorage.setItem('authUser', JSON.stringify(updatedUser));
+              setUser(updatedUser); // Update AuthContext
+              console.log('Preferences updated:', { defaultFromLang: newDefaultFromLang, defaultToLang: newDefaultToLang });
+            }
           }
+        } catch (err) {
+          console.error('Error fetching preferences:', err);
         }
-      } catch (err) {
-        console.error('Error fetching preferences:', err);
-      }
-    };
-    fetchPreferences();
-  }
-}, []); // Empty dependency array to run only once on mount
+      };
+      fetchPreferences();
+    } 
+  }, []); 
 
   // Handle translation history and state updates
   useEffect(() => {
@@ -76,6 +90,12 @@ useEffect(() => {
     }
   }, [user, activeTab]); // Dependencies for translation history updates
 
+  /*
+  Managing Translation History:
+  fetching translation history for logged in users from api
+  handles both text and voice translations dynamically
+  ensures only valid translation data is stored
+  */
   const loadTranslationHistory = async () => {
     if (!user) return;
     setLoading(true);
@@ -85,13 +105,13 @@ useEffect(() => {
       let data = [];
       if (activeTab === 'text') {
         const response = await fetch(`http://localhost:5000/api/translation/text/${user.id}`, {
-          headers: { 'Authorization': `Bearer ${sessionId}` },
+          headers: { 'Authorization': `Bearer ${user.signed_session_id}` },
         });
         if (!response.ok) throw new Error('Failed to fetch text translations');
         data = await response.json();
       } else if (activeTab === 'voice') {
         const response = await fetch(`http://localhost:5000/api/translation/voice/${user.id}`, {
-          headers: { 'Authorization': `Bearer ${sessionId}` },
+          headers: { 'Authorization': `Bearer ${user.signed_session_id}` },
         });
         if (!response.ok) throw new Error('Failed to fetch voice translations');
         data = await response.json();
@@ -111,8 +131,8 @@ useEffect(() => {
     } finally {
       setLoading(false);
     }
-  };
-
+  }; 
+  // Fetching Guest Translation History, loads translation history from localStorage limits to 20, for guest users
   const loadGuestHistory = () => {
     const savedTranslations = JSON.parse(localStorage.getItem('guestTranslations') || '[]');
     console.log('Guest translations from localStorage:', savedTranslations); // Debug log
@@ -128,6 +148,11 @@ useEffect(() => {
     setLoading(false);
   };
 
+  /*
+  Saving Language Preferences:
+  saves preferences to the database (logged-in users)
+  stores preferences in localStorage(guest users)
+  */
   const savePreferences = async () => {
     if (user) {
       try {
@@ -141,7 +166,7 @@ useEffect(() => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${sessionId}`,
+            'Authorization': `Bearer ${user.signed_session_id}`,
           },
           body: JSON.stringify(requestBody),
         });
@@ -161,7 +186,7 @@ useEffect(() => {
         // Fetch updated preferences
         console.log('Sending preferences GET request to:', `http://localhost:5000/api/user/preferences/${user.id}`);
         const preferencesResponse = await fetch(`http://localhost:5000/api/user/preferences/${user.id}`, {
-          headers: { 'Authorization': `Bearer ${sessionId}` },
+          headers: { 'Authorization': `Bearer ${user.signed_session_id}` },
         });
         console.log('GET preferences response status:', preferencesResponse.status);
         const preferencesResponseText = await preferencesResponse.text();
@@ -192,6 +217,7 @@ useEffect(() => {
     }
   };
 
+  // Handling Authentication, logs out the user and redirects them to the home screen
   const handleSignOut = async () => {
     try {
       await signOut();
@@ -201,7 +227,7 @@ useEffect(() => {
       setError('Failed to sign out.');
     }
   };
-
+  // Closes AuthScreen and forces a re-render on auth success
   const handleAuthSuccess = () => {
     console.log('Auth success callback triggered, user:', user);
     setShowAuth(false);

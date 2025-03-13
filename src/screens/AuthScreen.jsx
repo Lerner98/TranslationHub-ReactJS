@@ -1,18 +1,32 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { ExternalLink, X } from 'lucide-react';
+/*
+This screen component serves as our login and registration for TranslationHub 
+it allows users to sign in, sign up or continue as a guest, with built-in validation, loading states and error handling
+*/
 
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext'; // used to access auth functions like signIn, signUp, user
+import { ExternalLink, X } from 'lucide-react'; // used for the "continue as guest" button, X = close button
+
+/*
+OnCancel = called when the user cancels the login/register
+onSuccess = called after a successful login (to close modal and refresh profile)
+*/
+// State Management
 const AuthScreen = ({ onCancel, onSuccess }) => {
-  const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState('');
+  const [isLogin, setIsLogin] = useState(true); // toggle between login and sign-up
+  const [email, setEmail] = useState(''); 
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false); // disable buttons during api calls
+  const [error, setError] = useState(null); // to store/display auth errors
   const [successMessage, setSuccessMessage] = useState(null); // For registration success
   const [signInComplete, setSignInComplete] = useState(false); // Trigger modal close
-  const { signIn, signUp, user } = useAuth();
+  const { signIn, signUp, user } = useAuth(); // tracks the authenticated user from AuthContext
 
-  // Close modal when sign-in is complete and user state is updated
+  /*
+  Handling Login Completion:
+  Automatically closes the modal when signInComplete and user are set
+  if user isnt updated immediately it retries after 1 sec
+  */
   useEffect(() => {
     console.log('useEffect triggered, signInComplete:', signInComplete, 'user:', user);
     if (signInComplete && user) {
@@ -34,8 +48,9 @@ const AuthScreen = ({ onCancel, onSuccess }) => {
         }
       }, 1000); // 1000ms delay to ensure state propagation
     }
-  }, [signInComplete, user, onSuccess]);
+  }, [signInComplete, user, onSuccess]); // Closes modal when `signInComplete` and `user` are set, with a 1s delay for state propagation. Key for UX—adjust delay if state updates are slow.
 
+  // Email & Password Validation, using regex
   const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
@@ -46,6 +61,12 @@ const AuthScreen = ({ onCancel, onSuccess }) => {
     return passwordRegex.test(password);
   };
 
+  /*
+  Handling Login & Signup:
+  prevents default form submission
+  resets error & success messages
+  ensures the ui is clean before attempting authentication
+  */
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -54,7 +75,7 @@ const AuthScreen = ({ onCancel, onSuccess }) => {
     setSignInComplete(false);
     console.log('handleSubmit started, isLogin:', isLogin, 'email:', email);
 
-    // Validate inputs
+    // Input Validation, ensures fields are filled, format, stops if validation fails
     if (!email || !password) {
       setError('Please provide both email and password.');
       setLoading(false);
@@ -71,8 +92,15 @@ const AuthScreen = ({ onCancel, onSuccess }) => {
       setError('Password must be at least 8 characters long, contain at least one uppercase letter, and one special character.');
       setLoading(false);
       return;
-    }
+    } 
 
+    /*
+    Login & Registration API Calls:
+    handles both signIn and signUp
+    clears session before sign-up to prevent stale data
+    if login succeeds triggers modal closure
+    handling errors
+    */
     try {
       let result;
       if (isLogin) {
@@ -87,9 +115,9 @@ const AuthScreen = ({ onCancel, onSuccess }) => {
         }
         console.log('Sign-in successful, user state:', user);
       } else {
-        // Clear sessionStorage before registering a new user to avoid stale preferences
         sessionStorage.removeItem('authUser');
-        sessionStorage.removeItem('session_id');
+        sessionStorage.removeItem('session_id'); sessionStorage.removeItem('authUser');
+        sessionStorage.removeItem('session_id'); // Clears `sessionStorage` before sign-up to avoid stale preferences. Essential for new user setup
         console.log('Attempting sign-up with email:', email);
         result = await signUp(email, password);
         if (!result || !result.success) {

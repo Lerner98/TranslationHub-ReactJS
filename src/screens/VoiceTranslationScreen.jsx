@@ -1,30 +1,45 @@
+/*
+Voice Translation Screen component, enables voice-based translations in TranslationHub.
+provides mic recording & transcription to text via transcribeAudio function
+text translation via translateText
+saving translations to db for logged-in users, localStorage for guests
+limits guest users to 20 saved translations
+*/
+
+// Imports & Dependencies
 import React, { useState, useRef, useEffect } from 'react';
 import { Mic, Square, Save } from 'lucide-react';
 import LanguageSearch from '../components/LanguageSearch';
-import { transcribeAudio } from '../services/speechService';
+import { transcribeAudio } from '../services/speechService'; // used to convert recorded audio into text
 import { translateText } from '../services/translationService';
-import { useAuth } from '../context/AuthContext';
-import { useTranslationStore } from '../store/translationStore';
+import { useAuth } from '../context/AuthContext'; // fetches the user state (user, sessionId)
+import { useTranslationStore } from '../store/translationStore'; // stores translation history
 
+// State Management
 const VoiceTranslationScreen = () => {
   const { user } = useAuth();
   const addTranslation = useTranslationStore((state) => state.addTranslation);
 
-  const [isRecording, setIsRecording] = useState(false);
-  const [audioBlob, setAudioBlob] = useState(null);
-  const [transcribedText, setTranscribedText] = useState('');
-  const [translatedText, setTranslatedText] = useState('');
+  const [isRecording, setIsRecording] = useState(false); // tracks if the user is currently recording
+  const [audioBlob, setAudioBlob] = useState(null); 
+  const [transcribedText, setTranscribedText] = useState(''); // speech to text result
+  const [translatedText, setTranslatedText] = useState(''); // translated version of the text
   const [fromLang, setFromLang] = useState('');
   const [toLang, setToLang] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // tracks api processing state
   const [error, setError] = useState(null);
-  const [isSaved, setIsSaved] = useState(false);
+  const [isSaved, setIsSaved] = useState(false); // tracks if the translation was saved
 
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const audioContextRef = useRef(null);
   const audioSourceRef = useRef(null);
 
+  /*
+  Syncing User Preferences on Login:
+  loads default languages from user preferences or local storage
+  ensures sync when a user logs in or out
+  */
   useEffect(() => {
     if (user) {
       console.log('VoiceTranslationScreen - User preferences:', user.defaultFromLang, user.defaultToLang); // Debug log
@@ -36,6 +51,12 @@ const VoiceTranslationScreen = () => {
     }
   }, [user]);
 
+  /*
+  Starting & Stopping Recording:
+  requests mic access using nav.mediaDevices.getUserMedia
+  uses MediaRecorder to record audio
+  on stop, processes the recorded audio file(blob) and sends it for transcription
+  */
   const startRecording = async () => {
     try {
       setError(null);
@@ -76,6 +97,7 @@ const VoiceTranslationScreen = () => {
     }
   };
 
+  // Uses `MediaRecorder` for audio capture. Stops streams on stop—ensure browser permissions are handled.
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
@@ -88,6 +110,12 @@ const VoiceTranslationScreen = () => {
     }
   };
 
+  /*
+  Transcribing & Translating Audio:
+  calls transcribeAudio function to convert speech into text
+  calls translateText function to translate it
+  saves translation for guests in localStorage
+  */
   const processAudio = async (blob) => {
     setLoading(true);
     try {
@@ -124,6 +152,12 @@ const VoiceTranslationScreen = () => {
     }
   };
 
+  /*
+  Saving Translations (Logged-in Users): 
+  saves translations to the server for logged-in users
+  ensures fromlang and tolang are valid
+  handles API failures
+  */
   const saveToServer = async () => {
     if (!user) {
       setError('Please log in to save translation.');
@@ -144,7 +178,7 @@ const VoiceTranslationScreen = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user.session_id}`,
+          'Authorization': `Bearer ${user.signed_session_id}`, // Use signed_session_id for authentication
         },
         body: JSON.stringify({
           userId: user.id,

@@ -54,15 +54,15 @@ const authenticate = async (req, res, next) => {
         return res.status(401).json({ success: false, error: 'Unauthorized: No token provided' });
     }
 
-    const sessionId = authHeader.split(' ')[1];
-    const isValid = await validateSession(sessionId);
+    const signedSessionId = authHeader.split(' ')[1];
+    const isValid = await validateSession(null, signedSessionId); // Pass null for sessionId, validate with signedSessionId
     if (!isValid) {
         return res.status(401).json({ success: false, error: 'Unauthorized: Invalid or expired session' });
     }
 
-    req.sessionId = sessionId;
+    req.signedSessionId = signedSessionId;
     next();
-};
+}; // Checks for a valid Bearer token and session. Essential for securing all protected routes after ensuring `validateSession` in `database.js` is correctly implemented.
 
 // ✅ Register User API
 app.post('/api/register', async (req, res) => {
@@ -87,7 +87,7 @@ app.post('/api/register', async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: 'Server error during registration' });
     }
-});
+}); // Validates email and password with regex before calling `registerUser`. Critical for security—update regex if password rules change.
 
 // ✅ Login User API
 app.post('/api/login', async (req, res) => {
@@ -102,9 +102,9 @@ app.post('/api/login', async (req, res) => {
 
 // ✅ Logout User API
 app.post('/api/logout', authenticate, async (req, res) => {
-    const { sessionId } = req;
+    const { signedSessionId } = req;
     try {
-        const result = await logoutUser(sessionId);
+        const result = await logoutUser(signedSessionId);
         res.status(result.success ? 200 : 400).json(result);
     } catch (error) {
         res.status(500).json({ success: false, error: 'Server error during logout' });
@@ -182,7 +182,7 @@ app.get('/api/user/preferences/:userId', authenticate, async (req, res) => {
 
 // ✅ Start Server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`)); // Starts server on `PORT` (default 5000). Ensure `.env` has `PORT` defined if overriding the default.
 
 /**
  * 🚀 Translation Hub Backend Server Setup 🚀

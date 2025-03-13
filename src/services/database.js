@@ -1,8 +1,19 @@
-import sql from 'mssql';
-import bcrypt from 'bcryptjs';
-import dotenv from 'dotenv';
-import path from 'path';
+/*
+The node.js database service handles user authentication (register/login/logout)
+session validation
+storing translations
+fetching translation history
+updating and retrieving user preferences
+mock database mode for development using USE_MOCK_DB toggle
+*/
+
+// Key Dependencies
+import sql from 'mssql'; // to connect to Microsoft SQL Server for our DB
+import bcrypt from 'bcryptjs'; // to hash our passwords securely
+import dotenv from 'dotenv'; // loads the db credentials from .env
+import path from 'path'; // dynamic file paths handling
 import { fileURLToPath } from 'url';
+import crypto from 'crypto'; // Added for session ID signing and UUID generation
 
 // Get the directory name of the current module
 const __filename = fileURLToPath(import.meta.url);
@@ -19,6 +30,8 @@ console.log('Loaded environment variables:', {
   DB_SERVER: process.env.DB_SERVER,
   DB_NAME: process.env.DB_NAME,
   USE_MOCK_DB: process.env.USE_MOCK_DB,
+  SESSION_SECRET: process.env.SESSION_SECRET,
+  SESSION_EXPIRATION: process.env.SESSION_EXPIRATION,
 });
 
 const USE_MOCK_DB = process.env.USE_MOCK_DB === 'true';
@@ -49,7 +62,20 @@ if (USE_MOCK_DB) {
     console.warn('⚠️ Using mock login');
     const user = mockUsers.get(email);
     if (!user) return { success: false, error: 'User not found' };
-    return { success: true, user: { id: user.id, email: user.email, session_id: crypto.randomUUID() } };
+    const rawSessionId = crypto.randomUUID();
+    const sessionId = rawSessionId; // Raw GUID for database
+    const signedSessionId = crypto.createHmac('sha256', process.env.SESSION_SECRET || 'default-secret')
+                                 .update(rawSessionId)
+                                 .digest('hex'); // Signed session ID
+    return { 
+      success: true, 
+      user: { 
+        id: user.id, 
+        email: user.email, 
+        session_id: sessionId,
+        signed_session_id: signedSessionId 
+      } 
+    };
   };
 
   saveTextTranslation = async (userId, fromLang, toLang, originalText, translatedText) => {
@@ -91,9 +117,19 @@ if (USE_MOCK_DB) {
       .sort((a, b) => b.createdAt - a.createdAt);
   };
 
-  logoutUser = async () => ({ success: true, message: 'Logged out successfully' });
+  logoutUser = async (signedSessionId) => {
+    console.warn('⚠️ Using mock logout with signedSessionId:', signedSessionId);
+    return { success: true, message: 'Logged out successfully' };
+  };
 
-  validateSession = async () => true;
+  validateSession = async (sessionId, signedSessionId) => {
+    console.warn('⚠️ Using mock session validation with sessionId:', sessionId, 'signedSessionId:', signedSessionId);
+    // Simulate validation by checking if signedSessionId matches the HMAC of sessionId
+    const expectedSignedSessionId = crypto.createHmac('sha256', process.env.SESSION_SECRET || 'default-secret')
+                                         .update(sessionId)
+                                         .digest('hex');
+    return signedSessionId === expectedSignedSessionId;
+  };
 
   updateUserPreferences = async (userId, defaultFromLang, defaultToLang) => {
     console.warn('⚠️ Using mock update user preferences');
@@ -185,10 +221,17 @@ if (USE_MOCK_DB) {
         return { success: false, error: 'Invalid email or password' };
       }
 
-      const sessionId = crypto.randomUUID();
+      const rawSessionId = crypto.randomUUID();
+      const sessionId = rawSessionId; // Raw GUID for database
+      const signedSessionId = crypto.createHmac('sha256', process.env.SESSION_SECRET || 'default-secret')
+                                   .update(rawSessionId)
+                                   .digest('hex'); // Signed session ID
+      const expiresAt = new Date(Date.now() + (parseInt(process.env.SESSION_EXPIRATION, 10) * 1000));
       await poolInstance.request()
         .input('UserId', sql.UniqueIdentifier, user.UserId)
         .input('SessionId', sql.UniqueIdentifier, sessionId)
+        .input('ExpiresAt', sql.DateTime, expiresAt)
+        .input('SignedSessionId', sql.NVarChar(64), signedSessionId)
         .execute('spCreateSession');
 
       return { 
@@ -197,6 +240,7 @@ if (USE_MOCK_DB) {
           id: user.UserId, 
           email: user.email, 
           session_id: sessionId,
+          signed_session_id: signedSessionId,
           default_from_lang: user.default_from_lang,
           default_to_lang: user.default_to_lang 
         } 
@@ -207,12 +251,14 @@ if (USE_MOCK_DB) {
     }
   };
 
-  logoutUser = async (sessionId) => {
+  logoutUser = async (signedSessionId) => {
     try {
       const poolInstance = await getPool();
       if (!poolInstance) throw new Error('Database connection failed');
       
-      await poolInstance.request().input('SessionId', sql.UniqueIdentifier, sessionId).execute('spLogoutUser');
+      await poolInstance.request()
+        .input('SignedSessionId', sql.NVarChar(64), signedSessionId)
+        .query('DELETE FROM Sessions WHERE signed_session_id = @SignedSessionId');
       return { success: true, message: 'Logged out successfully' };
     } catch (error) {
       console.error('❌ Logout Error:', error);
@@ -290,16 +336,17 @@ if (USE_MOCK_DB) {
     }
   };
 
-  validateSession = async (sessionId) => {
+  validateSession = async (sessionId, signedSessionId) => {
     try {
       const poolInstance = await getPool();
       if (!poolInstance) throw new Error('Database connection failed');
       
-      const request = poolInstance.request().input('SessionId', sql.UniqueIdentifier, sessionId);
-      console.log(`Validating session with SessionId: ${sessionId}`); // Debug log
+      const request = poolInstance.request()
+        .input('SignedSessionId', sql.NVarChar(64), signedSessionId);
+      console.log(`Validating session with SignedSessionId: ${signedSessionId}`);
       const result = await request.execute('spValidateSession');
-      console.log('Validate session result:', result.recordset); // Debug log
-      return result.recordset.length > 0;
+      console.log('Validate session result:', result.recordset);
+      return result.recordset.length > 0; // Checks expiration and signed_session_id via updated `spValidateSession`.
     } catch (error) {
       console.error('❌ Validate Session Error:', {
         message: error.message,

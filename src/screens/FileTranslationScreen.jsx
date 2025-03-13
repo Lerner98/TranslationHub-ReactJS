@@ -1,21 +1,33 @@
+/*
+FileTranslationScreen is a react component that provides a file translation interface for users
+allowing them to upload a file .pdf, .doc, .docx, selecting a target language for translation,
+translating the files content using google api and downloading the translated file as .docx or .txt
+guest users are limited to 10 translations
+*/
+
+// Imports & Dependencies
 import React, { useState, useCallback, useEffect } from 'react';
-import { useDropzone } from 'react-dropzone';
+import { useDropzone } from 'react-dropzone'; // handles drag & drop file uploads
 import { FileText, Upload, Download } from 'lucide-react';
 import LanguageSearch from '../components/LanguageSearch';
-import { useAuth } from '../context/AuthContext';
-import { getDocument } from 'pdfjs-dist'; // Browser-compatible PDF parsing
-import { Document, Packer, Paragraph, TextRun } from 'docx'; // For .docx generation
-import mammoth from 'mammoth'; // For DOC/DOCX text extraction
+import { useAuth } from '../context/AuthContext'; // for user status
+import { getDocument } from 'pdfjs-dist'; // Browser-compatible PDF parsing, extracts text from pdfs
+import { Document, Packer, Paragraph, TextRun } from 'docx'; // .docx generation for downloads
+import mammoth from 'mammoth'; // For DOC/DOCX files text extraction
 
+// State Management
 const FileTranslationScreen = () => {
-  const { user } = useAuth();
-  const [file, setFile] = useState(null);
-  const [translatedText, setTranslatedText] = useState(null);
+  const { user } = useAuth(); // track if a user is logged in or if its a guest user for limits
+  const [file, setFile] = useState(null); // to store uploaded file
+  const [translatedText, setTranslatedText] = useState(null); // holds translated content after processing
   const [toLang, setToLang] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false); // tracks translation process
+  const [error, setError] = useState(null); 
 
-  // Load and check translated file count from localStorage for guests only
+  /*
+  Enforcing Guest Translation Limits:
+  loads and checks translated file count from localStorage for guests only
+  */
   useEffect(() => {
     if (!user) {
       const translatedFiles = JSON.parse(localStorage.getItem('translatedFiles') || '[]');
@@ -26,6 +38,11 @@ const FileTranslationScreen = () => {
     // Registered users have unlimited translations, no limit check needed
   }, [user]);
 
+  /*
+  Handling File Uploads:
+  allows only one file at a time to make sure of type consistency
+  resets previous translations & errors when a new file is uploaded
+  */ 
   const onDrop = useCallback((acceptedFiles) => {
     if (acceptedFiles.length > 0) {
       setFile(acceptedFiles[0]);
@@ -34,6 +51,7 @@ const FileTranslationScreen = () => {
     }
   }, []);
 
+  // Supports PDF/DOC/DOCX 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
@@ -44,11 +62,12 @@ const FileTranslationScreen = () => {
     maxFiles: 1,
   });
 
+  // Extracting Text from Files using `pdfjs-dist` or `mammoth`.  currently Limits to first PDF page, for multi page support need to change code
   const extractTextFromFile = async (file) => {
     let fileType;
     const extension = file.name.split('.').pop().toLowerCase();
     const mimeType = file.type;
-
+    // Processing PDFs
     if (mimeType === 'application/pdf' || extension === 'pdf') {
       fileType = 'pdf';
     } else if (
@@ -68,10 +87,10 @@ const FileTranslationScreen = () => {
       const arrayBuffer = await file.arrayBuffer();
       if (fileType === 'pdf') {
         const pdf = await getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
-        const page = await pdf.getPage(1); // Get the first page for simplicity
+        const page = await pdf.getPage(1); // get the first page for testing simplicity
         const textContent = await page.getTextContent();
         text = textContent.items.map(item => item.str).join(' ');
-      } else if (fileType === 'docx' || fileType === 'doc') {
+      } else if (fileType === 'docx' || fileType === 'doc') { // uses mammoth to extract text from word docs
         const docxData = await mammoth.extractRawText({ arrayBuffer });
         text = docxData.value;
       } else {
@@ -83,24 +102,29 @@ const FileTranslationScreen = () => {
     }
   };
 
+  /*
+  Handling Translation:
+  ensures a file and target language are selected
+  checks guest user, enforcing 10-file translation limits
+  */
   const handleTranslate = async () => {
     if (!file || !toLang) {
       setError('Please select a file and target language.');
       return;
     }
 
-    // Check limit only for guests (registered users have unlimited access)
+    // Check limit only for guests
     if (!user) {
       const translatedFiles = JSON.parse(localStorage.getItem('translatedFiles') || '[]');
       if (translatedFiles.length >= 10) {
         setError('Guest limit reached: Maximum 10 file translations.');
-        return;
+        return; 
       }
     }
 
     setLoading(true);
     setError(null);
-    try {
+    try { // Sending the text to google translate api
       const apiKey = import.meta.env.VITE_GOOGLE_TRANSLATE_API_KEY;
       const originalText = await extractTextFromFile(file);
 
@@ -118,7 +142,7 @@ const FileTranslationScreen = () => {
           },
         }
       );
-
+      // Handling API errors, common errors like 409 conflict, 429 rate limit, logs response for debugging
       if (!response.ok) {
         const errorText = await response.text();
         console.error('API Response Error:', response.status, errorText);
@@ -137,7 +161,7 @@ const FileTranslationScreen = () => {
       const translatedContent = result.data.translations[0].translatedText;
       setTranslatedText(translatedContent);
 
-      // Save translation count for guests only (registered users have no limit)
+      // Save translation count for guest users
       if (!user) {
         const translatedFiles = JSON.parse(localStorage.getItem('translatedFiles') || '[]');
         translatedFiles.push({ id: Date.now().toString(), fileName: file.name, timestamp: new Date() });
@@ -151,6 +175,7 @@ const FileTranslationScreen = () => {
     }
   };
 
+  // Downloading Translated Files, .docx with proper formatting, .txt for pdfs and unsupported formats
   const handleDownload = () => {
     if (!translatedText) return;
 

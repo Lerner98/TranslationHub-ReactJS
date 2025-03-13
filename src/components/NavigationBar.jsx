@@ -1,13 +1,14 @@
 import React from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Globe2, Mic, FileText, Languages, User, Moon, Sun } from 'lucide-react';
-import { useThemeStore } from '../store/themeStore';
+import { useNavigate, useLocation } from 'react-router-dom'; // react router for screens navigations and current URL path retrievals
+import { Globe2, Mic, FileText, Languages, User, Moon, Sun } from 'lucide-react'; // using icons from lucide react, for navigation buttons
+import { useThemeStore } from '../store/themeStore'; // custom hook for dark/light mode toggle
 
+// State & Navigation Logic
 const NavigationBar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { isDarkMode, toggleTheme } = useThemeStore();
-
+  // Our navigation items, each item has name,icon,path
   const navigationItems = [
     { name: 'Text Translation', icon: Globe2, path: '/translate' },
     { name: 'Voice Translation', icon: Mic, path: '/voice' },
@@ -16,7 +17,7 @@ const NavigationBar = () => {
     { name: 'Profile', icon: User, path: '/profile' },
   ];
 
-  const isActive = (path) => location.pathname.startsWith(path); // ✅ Fix: Supports query params & nested paths
+  const isActive = (path) => location.pathname.startsWith(path); 
 
   return (
     <nav className="bg-white dark:bg-gray-800 shadow-lg" role="navigation">
@@ -66,8 +67,8 @@ const NavigationBar = () => {
         </div>
       </div>
 
-      {/* Mobile Navigation */}
-      <div className="md:hidden border-t border-gray-200 dark:border-gray-700">
+      {/* Mobile Navigation, md:hidden = only visible on mobile */} 
+      <div className="md:hidden border-t border-gray-200 dark:border-gray-700"> 
         <div className="grid grid-cols-5 gap-1 p-2">
           {navigationItems.map((item) => {
             const Icon = item.icon;

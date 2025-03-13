@@ -9,9 +9,9 @@ export const transcribeAudio = async (audioBlob, language = 'en-US') => {
     console.warn('⚠️ Using mock speech recognition');
     await new Promise(resolve => setTimeout(resolve, 1000));
     return "This is a sample transcription of your voice recording.";
-  }
+  }  // Returns mock text with 1s delay.  for development—update mock for realistic testing
 
-  // Convert audioBlob to base64 using FileReader (browser-compatible)
+  // Converts `audioBlob` to base64 for API, Using FileReader(browser compatible)  Critical for Google Speech API—ensure encoding matches (`WEBM_OPUS`).
   const base64Audio = await new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -33,6 +33,7 @@ export const transcribeAudio = async (audioBlob, language = 'en-US') => {
     },
   };
 
+  // Uses Google Speech API with dynamic language. Handle 429 (rate limit) errors—check API key/quota.
   try {
     const response = await axios.post(
       `https://speech.googleapis.com/v1/speech:recognize?key=${GOOGLE_SPEECH_API_KEY}`,

@@ -4,11 +4,11 @@ import { persist } from 'zustand/middleware';
 export const useThemeStore = create(
   persist(
     (set) => ({
-      isDarkMode: false,
-      toggleTheme: () => set((state) => ({ isDarkMode: !state.isDarkMode })),
+      isDarkMode: false,  // Defaults to `false` (light mode). Rehydrates from `localStorage`—check UI integration.
+      toggleTheme: () => set((state) => ({ isDarkMode: !state.isDarkMode })), // Toggles `isDarkMode` and persists
     }),
     {
-      name: 'theme-storage',
+      name: 'theme-storage', // Saves to `localStorage` under `theme-storage`
     }
   )
 );

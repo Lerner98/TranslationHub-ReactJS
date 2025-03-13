@@ -1,25 +1,38 @@
+/*
+This Text Translation screen component serves as the main interface for text translations in TranslationHub,
+Enabling the users to:
+enter text & select source / target languages from google api
+translate after processing using google api
+guest users have a 20 translation limit
+*/
 import React, { useState, useEffect } from 'react';
 import { Repeat, Copy, History, Save } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom'; // handles redirection to profile page
 import LanguageSearch from '../components/LanguageSearch';
-import { translateText } from '../services/translationService';
-import { useAuth } from '../context/AuthContext';
+import { translateText } from '../services/translationService'; // function to translate text via the API
+import { useAuth } from '../context/AuthContext'; // fetches user state (user, sessionId)
 
+// State Management
 const TextTranslationScreen = () => {
-  const { user } = useAuth();
+  const { user } = useAuth(); 
   const navigate = useNavigate();
   const [fromLang, setFromLang] = useState(
     user ? (user.defaultFromLang || '') : (localStorage.getItem('guestDefaultFromLang') || '')
   );
   const [toLang, setToLang] = useState(
     user ? (user.defaultToLang || '') : (localStorage.getItem('guestDefaultToLang') || '')
-  );
-  const [inputText, setInputText] = useState('');
-  const [translatedText, setTranslatedText] = useState('');
-  const [loading, setLoading] = useState(false);
+  ); // Initializes `fromLang`/`toLang` with `user` prefs or `localStorage` for guests. Caused 'Hebrew'/'English' issue for new users—updated to avoid `localStorage` fallback for users
+  const [inputText, setInputText] = useState(''); // store original text to be translated
+  const [translatedText, setTranslatedText] = useState(''); // translated output
+  const [loading, setLoading] = useState(false); // tracks translation status
   const [error, setError] = useState(null);
-  const [isSaved, setIsSaved] = useState(false);
+  const [isSaved, setIsSaved] = useState(false); // tracks if the translation has been saved
 
+  /*
+  Syncing User Preferences on Login:
+  loads default languages from user preferences or localStorage (for guests).
+  ensures synchronization when a user logs in or out
+  */
   useEffect(() => {
     if (user) {
       console.log('TextTranslationScreen - User preferences:', user.defaultFromLang, user.defaultToLang); // Debug log
@@ -32,6 +45,7 @@ const TextTranslationScreen = () => {
     }
   }, [user]);
 
+  // Swapping Languages, swaps fromlang and tolang (also inputText and translataedText)
   const handleSwapLanguages = () => {
     setFromLang(toLang);
     setToLang(fromLang);
@@ -40,6 +54,12 @@ const TextTranslationScreen = () => {
     setIsSaved(false);
   };
 
+  /*
+  Handling Translation:
+  ensures both input text & languages are selected before making an API request
+  calls translateText function to fetch the translation
+  handles errors and updates UI state
+  */
   const handleTranslate = async () => {
     if (!inputText.trim()) return;
     if (!fromLang || !toLang) {
@@ -61,11 +81,16 @@ const TextTranslationScreen = () => {
       setLoading(false);
     }
   };
-
+  // Copying Text to Clipboard
   const handleCopyText = (text) => {
     navigator.clipboard.writeText(text);
   };
 
+  /*
+  Saving Translations:
+  saves translations to the database for logged-in users, or localStorage for guests
+  limits guest users to 20 saved translations
+  */
   const handleSaveTranslation = async () => {
     if (!translatedText.trim()) return;
 
@@ -78,7 +103,10 @@ const TextTranslationScreen = () => {
     if (user) {
       const response = await fetch('http://localhost:5000/api/translation/text', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.session_id}` },
+        headers: { 
+          'Content-Type': 'application/json', 
+          Authorization: `Bearer ${user.signed_session_id}` // Use signed_session_id for authentication
+        },
         body: JSON.stringify({
           userId: user.id,
           fromLang,
